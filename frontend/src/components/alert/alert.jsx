@@ -52,4 +52,4 @@ export const AlertDescription = ({
 );
 
 // components/ui/alert/index.js
-export { Alert, AlertDescription } from './alert';
+export { Alert } from './alert';
