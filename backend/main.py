@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import face_recognition
+import cv2
 import json
 import os
 import numpy as np
@@ -27,6 +27,9 @@ app.add_middleware(
 # Data storage
 USERS_FILE = os.getenv("USERS_FILE", "users.json")
 
+# Load the face detection classifier
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
 def load_users() -> Dict:
     """Load users from JSON file"""
     if os.path.exists(USERS_FILE):
@@ -39,34 +42,49 @@ def save_users(users: Dict):
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f)
 
+def get_face_encoding(image_array):
+    """Extract face features using OpenCV"""
+    gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    if len(faces) == 0:
+        raise HTTPException(status_code=400, detail="No face detected in the image")
+
+    # Get the largest face
+    (x, y, w, h) = max(faces, key=lambda x: x[2] * x[3])
+    face_image = gray[y:y+h, x:x+w]
+
+    # Resize to standard size
+    face_image = cv2.resize(face_image, (100, 100))
+
+    # Flatten the image to create a feature vector
+    return face_image.flatten().tolist()
+
+def compare_faces(face1, face2, threshold=5000):
+    """Compare two face encodings"""
+    return np.linalg.norm(np.array(face1) - np.array(face2)) < threshold
+
 @app.get("/")
 async def read_root():
     return {"message": "Face Recognition Auth API"}
 
 @app.post("/api/signup")
 async def signup(name: str, photo: UploadFile = File(...)):
-    """
-    Register a new user with their photo and name
-    """
     try:
         # Read and process the uploaded image
         contents = await photo.read()
-        image = face_recognition.load_image_file(BytesIO(contents))
-        face_encodings = face_recognition.face_encodings(image)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        if not face_encodings:
-            raise HTTPException(status_code=400, detail="No face detected in the image")
-
-        # Convert face encoding to list for JSON serialization
-        face_encoding = face_encodings[0].tolist()
+        # Get face encoding
+        face_encoding = get_face_encoding(image)
 
         # Load existing users
         users = load_users()
 
         # Check if face already exists
         for existing_user in users.values():
-            existing_encoding = np.array(existing_user["face_encoding"])
-            if len(face_recognition.compare_faces([existing_encoding], np.array(face_encoding))[0]):
+            if compare_faces(existing_user["face_encoding"], face_encoding):
                 raise HTTPException(status_code=400, detail="Face already registered")
 
         # Store new user
@@ -83,25 +101,20 @@ async def signup(name: str, photo: UploadFile = File(...)):
 
 @app.post("/api/signin")
 async def signin(photo: UploadFile = File(...)):
-    """
-    Authenticate user using their photo
-    """
     try:
         # Read and process the uploaded image
         contents = await photo.read()
-        image = face_recognition.load_image_file(BytesIO(contents))
-        face_encodings = face_recognition.face_encodings(image)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        if not face_encodings:
-            raise HTTPException(status_code=400, detail="No face detected in the image")
+        # Get face encoding
+        face_encoding = get_face_encoding(image)
 
-        face_encoding = face_encodings[0]
         users = load_users()
 
         # Check against all stored faces
         for user in users.values():
-            stored_encoding = np.array(user["face_encoding"])
-            if face_recognition.compare_faces([stored_encoding], face_encoding)[0]:
+            if compare_faces(user["face_encoding"], face_encoding):
                 return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
 
         raise HTTPException(status_code=401, detail="Face not recognized")
@@ -111,21 +124,11 @@ async def signin(photo: UploadFile = File(...)):
 
 @app.get("/api/users")
 async def get_users():
-    """
-    Get list of registered users (names only)
-    """
+    """Get list of registered users (names only)"""
     users = load_users()
     return {"users": list(users.keys())}
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Get port from environment variable or use default
     port = int(os.getenv("PORT", 8000))
-
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=True  # Enable auto-reload during development
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
