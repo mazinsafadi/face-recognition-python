@@ -1,6 +1,6 @@
 // components/ui/alert/alert.jsx
 import React from 'react';
-import { Alert as AlertIcon, AlertCircle } from 'lucide-react';
+import { AlertTriangle, AlertCircle } from 'lucide-react';
 
 const Alert = ({ children, variant = "default", className = "", ...props }) => {
   const baseStyles = "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground";
@@ -13,9 +13,9 @@ const Alert = ({ children, variant = "default", className = "", ...props }) => {
   };
 
   const icons = {
-    default: <AlertIcon className="h-4 w-4" />,
+    default: <AlertTriangle className="h-4 w-4" />,
     destructive: <AlertCircle className="h-4 w-4" />,
-    success: <AlertIcon className="h-4 w-4" />,
+    success: <AlertTriangle className="h-4 w-4" />,
     warning: <AlertCircle className="h-4 w-4" />,
   };
 
@@ -31,25 +31,24 @@ const Alert = ({ children, variant = "default", className = "", ...props }) => {
   );
 };
 
-export const AlertTitle = ({
-  className = "",
-  ...props
-}) => (
+Alert.displayName = "Alert";
+
+export const AlertTitle = React.forwardRef(({ className = "", ...props }, ref) => (
   <h5
+    ref={ref}
     className={`mb-1 font-medium leading-none tracking-tight ${className}`}
     {...props}
   />
-);
+));
+AlertTitle.displayName = "AlertTitle";
 
-export const AlertDescription = ({
-  className = "",
-  ...props
-}) => (
+export const AlertDescription = React.forwardRef(({ className = "", ...props }, ref) => (
   <div
+    ref={ref}
     className={`text-sm [&_p]:leading-relaxed ${className}`}
     {...props}
   />
-);
+));
+AlertDescription.displayName = "AlertDescription";
 
-// components/ui/alert/index.js
-export { Alert } from './alert';
+export { Alert };
