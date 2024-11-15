@@ -1,7 +1,7 @@
 // components/auth/face-capture.jsx
 import React, { useRef, useEffect } from 'react';
-import { Button } from '../button';
-import { Card, CardContent } from '../card';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
 import { Camera } from 'lucide-react';
 
 const FaceCapture = ({ onCapture, onCancel }) => {

@@ -1,8 +1,9 @@
+// src/FaceAuth.jsx
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './components/card/index.js';
-import { Alert } from './components/alert/index.js';
-import LoginForm from './components/auth/login-form.jsx';
-import RegistrationForm from './components/auth/registration-form.jsx';
+import { Card, CardContent } from './components/ui/card';
+import { Alert } from './components/ui/alert';
+import LoginForm from './components/auth/login-form';
+import RegistrationForm from './components/auth/registration-form';
 
 const FaceAuth = () => {
   const [isRegistering, setIsRegistering] = useState(false);
