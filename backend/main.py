@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import json
@@ -114,7 +114,10 @@ async def read_root():
     return {"message": "Face Recognition Auth API"}
 
 @app.post("/api/signup")
-async def signup(name: str, photo: UploadFile = File(...)):
+async def signup(
+        photo: UploadFile = File(...),
+        name: str = Form(...)  # Changed to Form parameter
+):
     logger.info(f"Signup attempt for user: {name}")
     try:
         # Log file details
