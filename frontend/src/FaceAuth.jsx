@@ -1,7 +1,7 @@
 // src/FaceAuth.jsx
 import React, { useState } from 'react';
-import { Card, CardContent } from './components/ui/card';
-import { Alert } from './components/ui/alert';
+import { Card, CardContent } from './components/card';
+import { Alert } from './components/alert';
 import LoginForm from './components/auth/login-form';
 import RegistrationForm from './components/auth/registration-form';
 
