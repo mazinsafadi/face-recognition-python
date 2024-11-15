@@ -1,9 +1,9 @@
 // components/auth/registration-form.jsx
 import React, { useState } from 'react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Alert } from '../ui/alert';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
+import { Button } from '../button';
+import { Input } from '../input';
+import { Alert } from '../alert';
+import { Card, CardHeader, CardTitle, CardContent } from '../card';
 import FaceCapture from './face-capture';
 
 const RegistrationForm = ({ onRegister, onCancel }) => {

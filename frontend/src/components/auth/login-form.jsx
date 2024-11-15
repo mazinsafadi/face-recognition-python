@@ -1,8 +1,8 @@
 // components/auth/login-form.jsx
 import React, { useState } from 'react';
-import { Button } from '../ui/button';
-import { Alert } from '../ui/alert';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
+import { Button } from '../button';
+import { Alert } from '../alert';
+import { Card, CardHeader, CardTitle, CardContent } from '../card';
 import FaceCapture from './face-capture';
 
 const LoginForm = ({ onLogin, onRegisterClick }) => {
