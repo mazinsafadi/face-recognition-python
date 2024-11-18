@@ -8,8 +8,7 @@ from typing import Dict
 from deepface import DeepFace
 import logging
 from datetime import datetime
-import base64
-from io import BytesIO
+from scipy.spatial.distance import cosine
 
 # Configure logging
 logging.basicConfig(
@@ -34,8 +33,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# File for storing user data
 USERS_FILE = os.getenv("USERS_FILE", "users.json")
 
+# Load users from file
 def load_users() -> Dict:
     try:
         if os.path.exists(USERS_FILE):
@@ -46,6 +47,7 @@ def load_users() -> Dict:
         logger.error(f"Error loading users: {str(e)}")
         return {}
 
+# Save users to file
 def save_users(users: Dict):
     try:
         with open(USERS_FILE, 'w') as f:
@@ -54,8 +56,8 @@ def save_users(users: Dict):
         logger.error(f"Error saving users: {str(e)}")
         raise
 
+# Extract face embedding
 def get_face_embedding(image_array):
-    """Extract face embedding using DeepFace"""
     try:
         embedding = DeepFace.represent(
             img_path=image_array,
@@ -63,7 +65,6 @@ def get_face_embedding(image_array):
             enforce_detection=True,
             detector_backend="opencv"
         )
-
         if not embedding:
             logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
@@ -74,10 +75,10 @@ def get_face_embedding(image_array):
         logger.error(f"Error in face embedding: {str(e)}")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
 
+# Compare face embeddings
 def compare_faces(embedding1, embedding2, threshold=0.4):
-    """Compare two face embeddings"""
     try:
-        distance = DeepFace.dst.findCosineDistance(embedding1, embedding2)
+        distance = cosine(embedding1, embedding2)
         logger.info(f"Face comparison distance: {distance} (threshold: {threshold})")
         return distance < threshold
     except Exception as e:
@@ -85,10 +86,7 @@ def compare_faces(embedding1, embedding2, threshold=0.4):
         raise
 
 @app.post("/api/signup")
-async def signup(
-        photo: UploadFile = File(...),
-        name: str = Form(...)
-):
+async def signup(photo: UploadFile = File(...), name: str = Form(...)):
     logger.info(f"Signup attempt for user: {name}")
     try:
         contents = await photo.read()
@@ -99,7 +97,6 @@ async def signup(
 
         users = load_users()
 
-        # Check if face already exists
         for existing_user in users.values():
             if compare_faces(existing_user["embedding"], face_embedding):
                 logger.warning(f"Face already registered under name: {existing_user['name']}")
@@ -132,7 +129,6 @@ async def signin(photo: UploadFile = File(...)):
 
         users = load_users()
 
-        # Check against all stored faces
         for user in users.values():
             if compare_faces(user["embedding"], face_embedding):
                 logger.info(f"Successful login for user: {user['name']}")
@@ -156,6 +152,10 @@ async def get_users():
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve users")
+
+@app.get("/")
+async def root():
+    return {"message": "API is running"}
 
 if __name__ == "__main__":
     import uvicorn
