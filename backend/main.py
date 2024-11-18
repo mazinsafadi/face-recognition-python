@@ -5,10 +5,11 @@ import json
 import os
 import numpy as np
 from typing import Dict
-import insightface
-from insightface.app import FaceAnalysis
+from deepface import DeepFace
 import logging
 from datetime import datetime
+import base64
+from io import BytesIO
 
 # Configure logging
 logging.basicConfig(
@@ -21,15 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize InsightFace
-app_insight = FaceAnalysis(
-    name='buffalo_l',
-    allowed_modules=['detection', 'recognition'],
-    providers=['CPUExecutionProvider']
-)
-app_insight.prepare(ctx_id=0, det_size=(640, 640))
-
-# FastAPI setup
 app = FastAPI()
 
 # Configure CORS
@@ -48,11 +40,7 @@ def load_users() -> Dict:
     try:
         if os.path.exists(USERS_FILE):
             with open(USERS_FILE, 'r') as f:
-                users = json.load(f)
-                # Convert face embeddings back to numpy arrays
-                for user in users.values():
-                    user["face_encoding"] = np.array(user["face_encoding"])
-                return users
+                return json.load(f)
         return {}
     except Exception as e:
         logger.error(f"Error loading users: {str(e)}")
@@ -60,49 +48,38 @@ def load_users() -> Dict:
 
 def save_users(users: Dict):
     try:
-        # Convert numpy arrays to lists for JSON serialization
-        users_json = {
-            name: {
-                "name": user["name"],
-                "face_encoding": user["face_encoding"].tolist()
-            }
-            for name, user in users.items()
-        }
         with open(USERS_FILE, 'w') as f:
-            json.dump(users_json, f)
+            json.dump(users, f)
     except Exception as e:
         logger.error(f"Error saving users: {str(e)}")
         raise
 
-def get_face_encoding(image_bytes):
-    """Extract face embedding using InsightFace"""
+def get_face_embedding(image_array):
+    """Extract face embedding using DeepFace"""
     try:
-        # Convert image bytes to numpy array
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        embedding = DeepFace.represent(
+            img_path=image_array,
+            model_name="VGG-Face",
+            enforce_detection=True,
+            detector_backend="opencv"
+        )
 
-        # Get face embedding
-        faces = app_insight.get(image)
-
-        if not faces:
+        if not embedding:
             logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
 
-        # Use the first face found
-        face = faces[0]
-        return face.embedding
+        return embedding[0]["embedding"]
 
     except Exception as e:
-        logger.error(f"Error in face encoding: {str(e)}")
-        raise
+        logger.error(f"Error in face embedding: {str(e)}")
+        raise HTTPException(status_code=400, detail="Failed to process face in image")
 
-def compare_faces(face1, face2, threshold=0.5):
+def compare_faces(embedding1, embedding2, threshold=0.4):
     """Compare two face embeddings"""
     try:
-        # Calculate cosine similarity
-        sim = np.dot(face1, face2) / (np.linalg.norm(face1) * np.linalg.norm(face2))
-        logger.info(f"Face similarity score: {sim} (threshold: {threshold})")
-        return sim > threshold
+        distance = DeepFace.dst.findCosineDistance(embedding1, embedding2)
+        logger.info(f"Face comparison distance: {distance} (threshold: {threshold})")
+        return distance < threshold
     except Exception as e:
         logger.error(f"Error comparing faces: {str(e)}")
         raise
@@ -115,19 +92,22 @@ async def signup(
     logger.info(f"Signup attempt for user: {name}")
     try:
         contents = await photo.read()
-        face_encoding = get_face_encoding(contents)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        face_embedding = get_face_embedding(image)
 
         users = load_users()
 
         # Check if face already exists
         for existing_user in users.values():
-            if compare_faces(existing_user["face_encoding"], face_encoding):
+            if compare_faces(existing_user["embedding"], face_embedding):
                 logger.warning(f"Face already registered under name: {existing_user['name']}")
                 raise HTTPException(status_code=400, detail="Face already registered")
 
         users[name] = {
             "name": name,
-            "face_encoding": face_encoding
+            "embedding": face_embedding
         }
         save_users(users)
         logger.info(f"Successfully registered new user: {name}")
@@ -145,13 +125,16 @@ async def signin(photo: UploadFile = File(...)):
     logger.info("Signin attempt")
     try:
         contents = await photo.read()
-        face_encoding = get_face_encoding(contents)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        face_embedding = get_face_embedding(image)
 
         users = load_users()
 
         # Check against all stored faces
         for user in users.values():
-            if compare_faces(user["face_encoding"], face_encoding):
+            if compare_faces(user["embedding"], face_embedding):
                 logger.info(f"Successful login for user: {user['name']}")
                 return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
 
@@ -173,3 +156,8 @@ async def get_users():
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve users")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
