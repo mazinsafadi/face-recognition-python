@@ -21,6 +21,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Disable GPU for TensorFlow
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 app = FastAPI()
 
 # Configure CORS
@@ -158,6 +161,7 @@ async def get_users():
 
 @app.get("/")
 async def root():
+    logger.info("Health check endpoint accessed.")
     return {"message": "API is running"}
 
 if __name__ == "__main__":
