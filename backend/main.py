@@ -59,11 +59,14 @@ def save_users(users: Dict):
 # Extract face embedding
 def get_face_embedding(image_array):
     try:
+        # Preprocess image to ensure proper input
+        image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+
         embedding = DeepFace.represent(
-            img_path=image_array,
+            img_path=image,
             model_name="VGG-Face",
             enforce_detection=True,
-            detector_backend="opencv"
+            detector_backend="mtcnn"  # Use MTCNN for better accuracy
         )
         if not embedding:
             logger.warning("No face detected in the image")
