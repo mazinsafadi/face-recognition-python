@@ -31,7 +31,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Ensure GPU is disabled
 app = FastAPI()
 
 # Configure CORS
-CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:3000")
+CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[CORS_ORIGIN],
@@ -41,7 +41,7 @@ app.add_middleware(
 )
 
 # File for storing user data
-USERS_FILE = os.getenv("USERS_FILE", "users.json")
+USERS_FILE = os.getenv("USERS_FILE", "./users.json")
 
 # Load users from file
 def load_users() -> Dict:
@@ -65,34 +65,28 @@ def save_users(users: Dict):
 
 # Extract face embedding
 def get_face_embedding(image_array):
+    temp_img_path = None
     try:
-        # Log memory usage
-        logger.info(f"Memory usage before processing: {psutil.virtual_memory().percent}%")
-
-        # Save image temporarily for DeepFace processing
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_img:
             cv2.imwrite(temp_img.name, image_array)
             temp_img_path = temp_img.name
 
-        # Extract embedding using DeepFace
         embedding = DeepFace.represent(
             img_path=temp_img_path,
             model_name="VGG-Face",
             enforce_detection=True,
             detector_backend="opencv"
         )
-        os.remove(temp_img_path)  # Cleanup temporary file
-
         if not embedding:
             logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
-
-        logger.info(f"Memory usage after processing: {psutil.virtual_memory().percent}%")
         return embedding[0]["embedding"]
-
     except Exception as e:
         logger.error(f"Error in face embedding: {str(e)}")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
+    finally:
+        if temp_img_path and os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
 
 # Compare face embeddings
 def compare_faces(embedding1, embedding2, threshold=0.4):
@@ -175,6 +169,11 @@ async def get_users():
 @app.get("/")
 async def root():
     logger.info("Health check endpoint accessed.")
+    return {"message": "API is running"}
+
+@app.head("/")
+async def root_head():
+    logger.info("Health check HEAD request accessed.")
     return {"message": "API is running"}
 
 if __name__ == "__main__":
