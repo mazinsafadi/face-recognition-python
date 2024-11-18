@@ -24,12 +24,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Disable GPU for TensorFlow
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-tf.config.set_visible_devices([], 'GPU')
-physical_devices = tf.config.list_physical_devices('CPU')
-if physical_devices:
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+# TensorFlow Configuration
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Suppress TensorFlow warnings
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Ensure GPU is disabled
 
 app = FastAPI()
 
