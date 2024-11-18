@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Suppress TensorFlow warnings
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Ensure GPU is disabled
 
+physical_devices = tf.config.list_physical_devices('CPU')
+if physical_devices:
+    try:
+        for device in physical_devices:
+            tf.config.experimental.set_virtual_device_configuration(
+                device,
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=512)]  # Limit memory usage
+            )
+    except RuntimeError as e:
+        logger.error(f"Error configuring TensorFlow memory: {e}")
+
 app = FastAPI()
 
 # Configure CORS
@@ -73,7 +84,7 @@ def get_face_embedding(image_array):
 
         embedding = DeepFace.represent(
             img_path=temp_img_path,
-            model_name="VGG-Face",
+            model_name="Facenet512",  # Use a lighter model
             enforce_detection=True,
             detector_backend="opencv"
         )
@@ -180,3 +191,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+
