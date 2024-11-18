@@ -11,6 +11,7 @@ from datetime import datetime
 from scipy.spatial.distance import cosine
 import psutil
 import tensorflow as tf
+import tempfile
 
 # Configure logging
 logging.basicConfig(
@@ -25,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 # Disable GPU for TensorFlow
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-tf.config.experimental.set_visible_devices([], 'GPU')
-physical_devices = tf.config.experimental.list_physical_devices('CPU')
+tf.config.set_visible_devices([], 'GPU')
+physical_devices = tf.config.list_physical_devices('CPU')
 if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
@@ -71,16 +72,20 @@ def get_face_embedding(image_array):
         # Log memory usage
         logger.info(f"Memory usage before processing: {psutil.virtual_memory().percent}%")
 
-        # Preprocess image to ensure proper input
-        image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, (224, 224))  # Resize to 224x224 for VGG-Face
+        # Save image temporarily for DeepFace processing
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_img:
+            cv2.imwrite(temp_img.name, image_array)
+            temp_img_path = temp_img.name
 
+        # Extract embedding using DeepFace
         embedding = DeepFace.represent(
-            img_path=image,
+            img_path=temp_img_path,
             model_name="VGG-Face",
             enforce_detection=True,
-            detector_backend="opencv"  # Use OpenCV for better performance
+            detector_backend="opencv"
         )
+        os.remove(temp_img_path)  # Cleanup temporary file
+
         if not embedding:
             logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
