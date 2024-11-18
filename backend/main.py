@@ -9,6 +9,8 @@ from deepface import DeepFace
 import logging
 from datetime import datetime
 from scipy.spatial.distance import cosine
+import psutil
+import tensorflow as tf
 
 # Configure logging
 logging.basicConfig(
@@ -23,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 # Disable GPU for TensorFlow
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+tf.config.experimental.set_visible_devices([], 'GPU')
+physical_devices = tf.config.experimental.list_physical_devices('CPU')
+if physical_devices:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 app = FastAPI()
 
@@ -62,19 +68,24 @@ def save_users(users: Dict):
 # Extract face embedding
 def get_face_embedding(image_array):
     try:
+        # Log memory usage
+        logger.info(f"Memory usage before processing: {psutil.virtual_memory().percent}%")
+
         # Preprocess image to ensure proper input
         image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        image = cv2.resize(image, (224, 224))  # Resize to 224x224 for VGG-Face
 
         embedding = DeepFace.represent(
             img_path=image,
             model_name="VGG-Face",
             enforce_detection=True,
-            detector_backend="mtcnn"  # Use MTCNN for better accuracy
+            detector_backend="opencv"  # Use OpenCV for better performance
         )
         if not embedding:
             logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
 
+        logger.info(f"Memory usage after processing: {psutil.virtual_memory().percent}%")
         return embedding[0]["embedding"]
 
     except Exception as e:
