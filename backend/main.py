@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
@@ -6,7 +5,6 @@ import json
 import os
 import numpy as np
 from typing import Dict
-import mediapipe as mp
 import logging
 from datetime import datetime
 from sklearn.metrics.pairwise import cosine_similarity
@@ -21,15 +19,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Initialize MediaPipe Face Detection and Face Mesh
-mp_face_detection = mp.solutions.face_detection
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    static_image_mode=True,
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5
-)
+# Initialize face detector and recognizer
+face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # Configure CORS
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
@@ -63,31 +54,53 @@ def save_users(users: Dict):
         logger.error(f"Error saving users: {str(e)}")
         raise
 
-def get_face_embedding(image_array):
+def get_face_embedding(image):
     try:
-        # Convert to RGB
-        image_rgb = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        # Resize image for faster processing
+        max_size = 640
+        height, width = image.shape[:2]
+        if height > max_size or width > max_size:
+            scale = max_size / max(height, width)
+            image = cv2.resize(image, None, fx=scale, fy=scale)
 
-        # Get face landmarks
-        results = face_mesh.process(image_rgb)
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        if not results.multi_face_landmarks:
+        # Detect faces
+        faces = face_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+
+        if len(faces) == 0:
             raise HTTPException(status_code=400, detail="No face detected in the image")
 
-        # Extract face landmarks as embedding
-        face_landmarks = results.multi_face_landmarks[0]
-        embedding = []
+        if len(faces) > 1:
+            raise HTTPException(status_code=400, detail="Multiple faces detected. Please provide an image with a single face.")
 
-        # Convert landmarks to flat array
-        for landmark in face_landmarks.landmark:
-            embedding.extend([landmark.x, landmark.y, landmark.z])
+        # Get the face area
+        x, y, w, h = faces[0]
+        face = gray[y:y+h, x:x+w]
 
-        return embedding
+        # Resize face to standard size
+        face = cv2.resize(face, (128, 128))
+
+        # Normalize pixel values
+        face = face.astype(np.float32) / 255.0
+
+        # Flatten to create embedding
+        embedding = face.flatten()
+
+        return embedding.tolist()
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in face embedding: {str(e)}")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
 
-def compare_faces(embedding1, embedding2, threshold=0.85):
+def compare_faces(embedding1, embedding2, threshold=0.8):
     try:
         # Reshape embeddings for sklearn
         emb1 = np.array(embedding1).reshape(1, -1)
