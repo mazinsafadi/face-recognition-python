@@ -3,7 +3,7 @@ services:
     name: face-auth-backend
     env: python
     buildCommand: apt-get update && apt-get install -y libsm6 libxext6 libxrender-dev && pip install -r requirements.txt
-    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --timeout 300
+    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --timeout 300 --max-requests 50 --max-requests-jitter 10
     envVars:
       - key: PYTHON_VERSION
         value: "3.9.0"

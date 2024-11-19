@@ -12,26 +12,29 @@ from scipy.spatial.distance import cosine
 import tensorflow as tf
 import tempfile
 
-# Configure logging for production
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()  # Only use StreamHandler for Render
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
-# TensorFlow Configuration
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+# TensorFlow Memory Configuration
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+tf.config.set_visible_devices([], 'GPU')
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
 
-# Face recognition model configuration
-FACE_RECOGNITION_MODEL = "VGG-Face"
+# Set model for consistent embedding generation - using Facenet512 for lower memory usage
+FACE_RECOGNITION_MODEL = "Facenet512"  # Changed from VGG-Face for lower memory footprint
 
-app = FastAPI(title="Face Authentication API")
+app = FastAPI()
 
-# CORS configuration
+# Configure CORS
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
@@ -41,7 +44,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# File storage configuration
 USERS_FILE = os.getenv("USERS_FILE", "/tmp/users.json")
 
 def load_users() -> Dict:
@@ -67,8 +69,16 @@ def save_users(users: Dict):
 def get_face_embedding(image_array):
     temp_img_path = None
     try:
+        # Resize image to reduce memory usage
+        max_size = 640
+        height, width = image_array.shape[:2]
+        if height > max_size or width > max_size:
+            scale = max_size / max(height, width)
+            image_array = cv2.resize(image_array, None, fx=scale, fy=scale)
+
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_img:
-            cv2.imwrite(temp_img.name, image_array)
+            # Compress image to reduce memory usage
+            cv2.imwrite(temp_img.name, image_array, [cv2.IMWRITE_JPEG_QUALITY, 90])
             temp_img_path = temp_img.name
 
         embedding = DeepFace.represent(
@@ -81,6 +91,7 @@ def get_face_embedding(image_array):
         if not embedding:
             raise HTTPException(status_code=400, detail="No face detected in the image")
         return embedding[0]["embedding"]
+
     except Exception as e:
         logger.error(f"Error in face embedding: {str(e)}")
         if "No face detected" in str(e):
@@ -118,6 +129,11 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
         face_embedding = get_face_embedding(image)
         users = load_users()
 
+        # Clear image from memory
+        del image
+        del contents
+        del nparr
+
         for existing_user in users.values():
             if compare_faces(existing_user["embedding"], face_embedding):
                 logger.warning(f"Face already registered under name: {existing_user['name']}")
@@ -125,8 +141,7 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
 
         users[name] = {
             "name": name,
-            "embedding": face_embedding,
-            "created_at": datetime.utcnow().isoformat()
+            "embedding": face_embedding
         }
         save_users(users)
         logger.info(f"Successfully registered new user: {name}")
@@ -137,7 +152,7 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
         raise
     except Exception as e:
         logger.error(f"Error during signup: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error during signup")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/signin")
 async def signin(photo: UploadFile = File(...)):
@@ -151,6 +166,12 @@ async def signin(photo: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Invalid image format")
 
         face_embedding = get_face_embedding(image)
+
+        # Clear image from memory
+        del image
+        del contents
+        del nparr
+
         users = load_users()
 
         for user in users.values():
@@ -160,7 +181,6 @@ async def signin(photo: UploadFile = File(...)):
                     return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
             except ValueError as ve:
                 logger.warning(f"Embedding size mismatch for user {user['name']}: {ve}")
-                continue
 
         logger.warning("Face not recognized")
         raise HTTPException(status_code=401, detail="Face not recognized")
@@ -169,7 +189,7 @@ async def signin(photo: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Error during signin: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error during signin")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/users")
 async def get_users():
@@ -183,6 +203,4 @@ async def get_users():
 
 @app.get("/")
 async def root():
-    return {"status": "healthy", "message": "Face Authentication API is running"}
-
-# Remove if __main__ block as it's not needed with Gunicorn
+    return {"message": "API is running"}
