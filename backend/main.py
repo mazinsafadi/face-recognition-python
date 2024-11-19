@@ -1,13 +1,15 @@
 # main.py
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-import face_recognition
+import cv2
 import json
 import os
 import numpy as np
 from typing import Dict
+import mediapipe as mp
 import logging
 from datetime import datetime
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Configure logging
 logging.basicConfig(
@@ -18,6 +20,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Initialize MediaPipe Face Detection and Face Mesh
+mp_face_detection = mp.solutions.face_detection
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5
+)
 
 # Configure CORS
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
@@ -51,46 +63,66 @@ def save_users(users: Dict):
         logger.error(f"Error saving users: {str(e)}")
         raise
 
-def get_face_encoding(image_bytes):
+def get_face_embedding(image_array):
     try:
-        # Convert image bytes to numpy array
-        nparr = np.frombuffer(image_bytes, np.uint8)
+        # Convert to RGB
+        image_rgb = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
 
-        # Load the image using face_recognition
-        image = face_recognition.load_image_file(nparr)
+        # Get face landmarks
+        results = face_mesh.process(image_rgb)
 
-        # Find all faces in the image
-        face_locations = face_recognition.face_locations(image, model="hog")
-
-        if not face_locations:
+        if not results.multi_face_landmarks:
             raise HTTPException(status_code=400, detail="No face detected in the image")
 
-        # Get the encoding for the first face found
-        face_encoding = face_recognition.face_encodings(image, face_locations)[0]
+        # Extract face landmarks as embedding
+        face_landmarks = results.multi_face_landmarks[0]
+        embedding = []
 
-        return face_encoding.tolist()
+        # Convert landmarks to flat array
+        for landmark in face_landmarks.landmark:
+            embedding.extend([landmark.x, landmark.y, landmark.z])
+
+        return embedding
     except Exception as e:
-        logger.error(f"Error in face encoding: {str(e)}")
+        logger.error(f"Error in face embedding: {str(e)}")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
+
+def compare_faces(embedding1, embedding2, threshold=0.85):
+    try:
+        # Reshape embeddings for sklearn
+        emb1 = np.array(embedding1).reshape(1, -1)
+        emb2 = np.array(embedding2).reshape(1, -1)
+
+        # Calculate similarity
+        similarity = cosine_similarity(emb1, emb2)[0][0]
+        logger.info(f"Face similarity score: {similarity} (threshold: {threshold})")
+        return similarity > threshold
+    except Exception as e:
+        logger.error(f"Error comparing faces: {str(e)}")
+        raise
 
 @app.post("/api/signup")
 async def signup(photo: UploadFile = File(...), name: str = Form(...)):
     logger.info(f"Signup attempt for user: {name}")
     try:
         contents = await photo.read()
-        face_encoding = get_face_encoding(contents)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        face_embedding = get_face_embedding(image)
         users = load_users()
 
-        # Check for existing faces
         for existing_user in users.values():
-            if face_recognition.compare_faces([np.array(existing_user["encoding"])],
-                                              np.array(face_encoding))[0]:
+            if compare_faces(existing_user["embedding"], face_embedding):
                 logger.warning(f"Face already registered under name: {existing_user['name']}")
                 raise HTTPException(status_code=400, detail="Face already registered")
 
         users[name] = {
             "name": name,
-            "encoding": face_encoding,
+            "embedding": face_embedding,
             "created_at": datetime.utcnow().isoformat()
         }
         save_users(users)
@@ -109,12 +141,17 @@ async def signin(photo: UploadFile = File(...)):
     logger.info("Signin attempt")
     try:
         contents = await photo.read()
-        face_encoding = get_face_encoding(contents)
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        face_embedding = get_face_embedding(image)
         users = load_users()
 
         for user in users.values():
-            if face_recognition.compare_faces([np.array(user["encoding"])],
-                                              np.array(face_encoding))[0]:
+            if compare_faces(user["embedding"], face_embedding):
                 logger.info(f"Successful login for user: {user['name']}")
                 return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
 
