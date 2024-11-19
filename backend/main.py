@@ -9,39 +9,29 @@ from deepface import DeepFace
 import logging
 from datetime import datetime
 from scipy.spatial.distance import cosine
-import psutil
 import tensorflow as tf
 import tempfile
 
-# Configure logging
+# Configure logging for production
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
+        logging.StreamHandler()  # Only use StreamHandler for Render
     ]
 )
 logger = logging.getLogger(__name__)
 
 # TensorFlow Configuration
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Suppress TensorFlow warnings
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Ensure GPU is disabled
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-physical_devices = tf.config.list_physical_devices('CPU')
-if physical_devices:
-    try:
-        for device in physical_devices:
-            tf.config.experimental.set_virtual_device_configuration(
-                device,
-                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=512)]  # Limit memory usage
-            )
-    except RuntimeError as e:
-        logger.error(f"Error configuring TensorFlow memory: {e}")
+# Face recognition model configuration
+FACE_RECOGNITION_MODEL = "VGG-Face"
 
-app = FastAPI()
+app = FastAPI(title="Face Authentication API")
 
-# Configure CORS
+# CORS configuration
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
@@ -51,30 +41,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# File for storing user data
-USERS_FILE = os.getenv("USERS_FILE", "./users.json")
+# File storage configuration
+USERS_FILE = os.getenv("USERS_FILE", "/tmp/users.json")
 
-# Load users from file
 def load_users() -> Dict:
     try:
         if os.path.exists(USERS_FILE):
             with open(USERS_FILE, 'r') as f:
                 return json.load(f)
+        os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
         return {}
     except Exception as e:
         logger.error(f"Error loading users: {str(e)}")
         return {}
 
-# Save users to file
 def save_users(users: Dict):
     try:
+        os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
         with open(USERS_FILE, 'w') as f:
             json.dump(users, f)
     except Exception as e:
         logger.error(f"Error saving users: {str(e)}")
         raise
 
-# Extract face embedding
 def get_face_embedding(image_array):
     temp_img_path = None
     try:
@@ -84,24 +73,30 @@ def get_face_embedding(image_array):
 
         embedding = DeepFace.represent(
             img_path=temp_img_path,
-            model_name="Facenet512",  # Use a lighter model
+            model_name=FACE_RECOGNITION_MODEL,
             enforce_detection=True,
             detector_backend="opencv"
         )
+
         if not embedding:
-            logger.warning("No face detected in the image")
             raise HTTPException(status_code=400, detail="No face detected in the image")
         return embedding[0]["embedding"]
     except Exception as e:
         logger.error(f"Error in face embedding: {str(e)}")
+        if "No face detected" in str(e):
+            raise HTTPException(status_code=400, detail="No face detected in the image")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
     finally:
         if temp_img_path and os.path.exists(temp_img_path):
-            os.remove(temp_img_path)
+            try:
+                os.remove(temp_img_path)
+            except Exception as e:
+                logger.error(f"Error removing temporary file: {str(e)}")
 
-# Compare face embeddings
 def compare_faces(embedding1, embedding2, threshold=0.4):
     try:
+        if len(embedding1) != len(embedding2):
+            raise ValueError(f"Embedding size mismatch: {len(embedding1)} != {len(embedding2)}")
         distance = cosine(embedding1, embedding2)
         logger.info(f"Face comparison distance: {distance} (threshold: {threshold})")
         return distance < threshold
@@ -117,8 +112,10 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        face_embedding = get_face_embedding(image)
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
 
+        face_embedding = get_face_embedding(image)
         users = load_users()
 
         for existing_user in users.values():
@@ -128,7 +125,8 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
 
         users[name] = {
             "name": name,
-            "embedding": face_embedding
+            "embedding": face_embedding,
+            "created_at": datetime.utcnow().isoformat()
         }
         save_users(users)
         logger.info(f"Successfully registered new user: {name}")
@@ -139,7 +137,7 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
         raise
     except Exception as e:
         logger.error(f"Error during signup: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error during signup")
 
 @app.post("/api/signin")
 async def signin(photo: UploadFile = File(...)):
@@ -149,14 +147,20 @@ async def signin(photo: UploadFile = File(...)):
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        face_embedding = get_face_embedding(image)
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
 
+        face_embedding = get_face_embedding(image)
         users = load_users()
 
         for user in users.values():
-            if compare_faces(user["embedding"], face_embedding):
-                logger.info(f"Successful login for user: {user['name']}")
-                return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
+            try:
+                if compare_faces(user["embedding"], face_embedding):
+                    logger.info(f"Successful login for user: {user['name']}")
+                    return {"message": f"Welcome back, {user['name']}", "name": user["name"]}
+            except ValueError as ve:
+                logger.warning(f"Embedding size mismatch for user {user['name']}: {ve}")
+                continue
 
         logger.warning("Face not recognized")
         raise HTTPException(status_code=401, detail="Face not recognized")
@@ -165,7 +169,7 @@ async def signin(photo: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Error during signin: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error during signin")
 
 @app.get("/api/users")
 async def get_users():
@@ -179,16 +183,6 @@ async def get_users():
 
 @app.get("/")
 async def root():
-    logger.info("Health check endpoint accessed.")
-    return {"message": "API is running"}
+    return {"status": "healthy", "message": "Face Authentication API is running"}
 
-@app.head("/")
-async def root_head():
-    logger.info("Health check HEAD request accessed.")
-    return {"message": "API is running"}
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
+# Remove if __main__ block as it's not needed with Gunicorn
