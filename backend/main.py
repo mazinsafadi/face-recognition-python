@@ -5,9 +5,10 @@ import json
 import os
 import numpy as np
 from typing import Dict
+from deepface import DeepFace
 import logging
 from datetime import datetime
-from sklearn.metrics.pairwise import cosine_similarity
+import tensorflow as tf
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +18,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# Configure TensorFlow to use less memory
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
 
-# Initialize face detector and recognizer
-face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+tf.config.set_visible_devices([], 'GPU')
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
+app = FastAPI()
 
 # Configure CORS
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "*")
@@ -33,6 +41,19 @@ app.add_middleware(
 )
 
 USERS_FILE = os.getenv("USERS_FILE", "/tmp/users.json")
+
+# Initialize DeepFace model at startup
+logger.info("Initializing face recognition model...")
+try:
+    # Pre-load the model
+    DeepFace.represent(
+        img_path=np.zeros((112, 112, 3), dtype=np.uint8),
+        model_name="Facenet",
+        enforce_detection=False
+    )
+    logger.info("Face recognition model initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing face recognition model: {e}")
 
 def load_users() -> Dict:
     try:
@@ -54,60 +75,37 @@ def save_users(users: Dict):
         logger.error(f"Error saving users: {str(e)}")
         raise
 
-def get_face_embedding(image):
+def get_face_embedding(image_array):
     try:
-        # Resize image for faster processing
+        # Resize image to reduce memory usage
         max_size = 640
-        height, width = image.shape[:2]
+        height, width = image_array.shape[:2]
         if height > max_size or width > max_size:
             scale = max_size / max(height, width)
-            image = cv2.resize(image, None, fx=scale, fy=scale)
+            image_array = cv2.resize(image_array, None, fx=scale, fy=scale)
 
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Detect faces
-        faces = face_detector.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
+        embedding = DeepFace.represent(
+            img_path=image_array,
+            model_name="Facenet",  # Using Facenet model which is faster and lighter
+            enforce_detection=True,
+            detector_backend="retinaface",  # Using RetinaFace for better detection
+            align=True
         )
 
-        if len(faces) == 0:
+        if not embedding:
             raise HTTPException(status_code=400, detail="No face detected in the image")
 
-        if len(faces) > 1:
-            raise HTTPException(status_code=400, detail="Multiple faces detected. Please provide an image with a single face.")
-
-        # Get the face area
-        x, y, w, h = faces[0]
-        face = gray[y:y+h, x:x+w]
-
-        # Resize face to standard size
-        face = cv2.resize(face, (128, 128))
-
-        # Normalize pixel values
-        face = face.astype(np.float32) / 255.0
-
-        # Flatten to create embedding
-        embedding = face.flatten()
-
-        return embedding.tolist()
-    except HTTPException:
-        raise
+        return embedding[0]["embedding"]
     except Exception as e:
         logger.error(f"Error in face embedding: {str(e)}")
+        if "Face could not be detected" in str(e):
+            raise HTTPException(status_code=400, detail="No face detected in the image")
         raise HTTPException(status_code=400, detail="Failed to process face in image")
 
-def compare_faces(embedding1, embedding2, threshold=0.8):
+def compare_faces(embedding1, embedding2, threshold=0.4):
     try:
-        # Reshape embeddings for sklearn
-        emb1 = np.array(embedding1).reshape(1, -1)
-        emb2 = np.array(embedding2).reshape(1, -1)
-
-        # Calculate similarity
-        similarity = cosine_similarity(emb1, emb2)[0][0]
+        distance = np.linalg.norm(np.array(embedding1) - np.array(embedding2))
+        similarity = 1 / (1 + distance)
         logger.info(f"Face similarity score: {similarity} (threshold: {threshold})")
         return similarity > threshold
     except Exception as e:
@@ -127,6 +125,11 @@ async def signup(photo: UploadFile = File(...), name: str = Form(...)):
 
         face_embedding = get_face_embedding(image)
         users = load_users()
+
+        # Clear memory
+        del image
+        del contents
+        del nparr
 
         for existing_user in users.values():
             if compare_faces(existing_user["embedding"], face_embedding):
@@ -161,6 +164,12 @@ async def signin(photo: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Invalid image format")
 
         face_embedding = get_face_embedding(image)
+
+        # Clear memory
+        del image
+        del contents
+        del nparr
+
         users = load_users()
 
         for user in users.values():
