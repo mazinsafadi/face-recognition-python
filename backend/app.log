@@ -1,0 +1,93 @@
+2024-11-18 16:21:21,553 - INFO - Started server process [52784]
+2024-11-18 16:21:21,553 - INFO - Waiting for application startup.
+2024-11-18 16:21:21,553 - INFO - Application startup complete.
+2024-11-18 16:22:03,060 - INFO - Signin attempt
+2024-11-18 16:22:52,124 - ERROR - Error loading users: Expecting value: line 1 column 1 (char 0)
+2024-11-18 16:22:52,124 - WARNING - Face not recognized
+2024-11-18 16:23:08,293 - INFO - Signup attempt for user: Ronaldo
+2024-11-18 16:23:08,643 - ERROR - Error loading users: Expecting value: line 1 column 1 (char 0)
+2024-11-18 16:23:08,643 - INFO - Successfully registered new user: Ronaldo
+2024-11-18 16:23:32,222 - INFO - Signin attempt
+2024-11-18 16:23:32,549 - INFO - Face comparison distance: 0 (threshold: 0.4)
+2024-11-18 16:23:32,550 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:23:38,634 - INFO - Signin attempt
+2024-11-18 16:23:38,936 - INFO - Face comparison distance: 0 (threshold: 0.4)
+2024-11-18 16:23:38,937 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:24:35,214 - INFO - Signin attempt
+2024-11-18 16:24:35,964 - INFO - Face comparison distance: 0 (threshold: 0.4)
+2024-11-18 16:24:35,965 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:24:42,179 - INFO - Signin attempt
+2024-11-18 16:24:42,709 - INFO - Face comparison distance: 0.2381899033242112 (threshold: 0.4)
+2024-11-18 16:24:42,709 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:24:49,468 - INFO - Signin attempt
+2024-11-18 16:24:49,959 - INFO - Face comparison distance: 0.19712593481479346 (threshold: 0.4)
+2024-11-18 16:24:49,959 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:24:59,864 - INFO - Signin attempt
+2024-11-18 16:25:00,612 - INFO - Face comparison distance: 0 (threshold: 0.4)
+2024-11-18 16:25:00,612 - INFO - Successful login for user: Ronaldo
+2024-11-18 16:25:30,573 - INFO - Signin attempt
+2024-11-18 16:25:31,120 - INFO - Face comparison distance: 0.46405079545350714 (threshold: 0.4)
+2024-11-18 16:25:31,121 - WARNING - Face not recognized
+2024-11-18 16:25:46,961 - INFO - Signin attempt
+2024-11-18 16:25:47,506 - INFO - Face comparison distance: 0.46405079545350714 (threshold: 0.4)
+2024-11-18 16:25:47,506 - WARNING - Face not recognized
+2024-11-18 16:25:54,666 - INFO - Signup attempt for user: Mazin
+2024-11-18 16:25:55,187 - INFO - Face comparison distance: 0.46405079545350714 (threshold: 0.4)
+2024-11-18 16:25:55,203 - INFO - Successfully registered new user: Mazin
+2024-11-18 16:26:05,387 - INFO - Signup attempt for user: Mazin
+2024-11-18 16:26:06,034 - INFO - Face comparison distance: 0.5782975918546516 (threshold: 0.4)
+2024-11-18 16:26:06,035 - INFO - Face comparison distance: 0.15648736069178037 (threshold: 0.4)
+2024-11-18 16:26:06,036 - WARNING - Face already registered under name: Mazin
+2024-11-18 16:26:18,555 - INFO - Signin attempt
+2024-11-18 16:26:19,089 - INFO - Face comparison distance: 0.5782975918546516 (threshold: 0.4)
+2024-11-18 16:26:19,090 - INFO - Face comparison distance: 0.15648736069178037 (threshold: 0.4)
+2024-11-18 16:26:19,090 - INFO - Successful login for user: Mazin
+2024-11-19 10:31:01,969 - INFO - Available physical devices: [PhysicalDevice(name='/physical_device:CPU:0', device_type='CPU')]
+2024-11-19 10:31:01,969 - INFO - Started server process [38000]
+2024-11-19 10:31:01,969 - INFO - Waiting for application startup.
+2024-11-19 10:31:01,985 - INFO - Application startup complete.
+2024-11-19 10:31:09,016 - INFO - Signin attempt
+2024-11-19 10:31:28,641 - ERROR - Error comparing faces: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:31:28,642 - ERROR - Error during signin: operands could not be broadcast together with shapes (2622,) (512,) 
+Traceback (most recent call last):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 153, in signin
+    if compare_faces(user["embedding"], face_embedding):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 101, in compare_faces
+    distance = cosine(embedding1, embedding2)
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 670, in cosine
+    return max(0, min(correlation(u, v, w=w, centered=False), 2.0))
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 619, in correlation
+    uv = np.average(u * v, weights=w)
+ValueError: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:32:03,083 - INFO - Signin attempt
+2024-11-19 10:32:03,677 - ERROR - Error comparing faces: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:32:03,678 - ERROR - Error during signin: operands could not be broadcast together with shapes (2622,) (512,) 
+Traceback (most recent call last):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 153, in signin
+    if compare_faces(user["embedding"], face_embedding):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 101, in compare_faces
+    distance = cosine(embedding1, embedding2)
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 670, in cosine
+    return max(0, min(correlation(u, v, w=w, centered=False), 2.0))
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 619, in correlation
+    uv = np.average(u * v, weights=w)
+ValueError: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:32:26,792 - INFO - Signin attempt
+2024-11-19 10:32:27,229 - ERROR - Error comparing faces: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:32:27,230 - ERROR - Error during signin: operands could not be broadcast together with shapes (2622,) (512,) 
+Traceback (most recent call last):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 153, in signin
+    if compare_faces(user["embedding"], face_embedding):
+  File "C:\projects\apps-demos\face-recognition-python\backend\.\main.py", line 101, in compare_faces
+    distance = cosine(embedding1, embedding2)
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 670, in cosine
+    return max(0, min(correlation(u, v, w=w, centered=False), 2.0))
+  File "C:\projects\apps-demos\face-recognition-python\venv\lib\site-packages\scipy\spatial\distance.py", line 619, in correlation
+    uv = np.average(u * v, weights=w)
+ValueError: operands could not be broadcast together with shapes (2622,) (512,) 
+2024-11-19 10:39:42,228 - INFO - Started server process [63180]
+2024-11-19 10:39:42,228 - INFO - Waiting for application startup.
+2024-11-19 10:39:42,228 - INFO - Application startup complete.
+2024-11-19 10:39:46,499 - INFO - Signin attempt
+2024-11-19 10:39:52,215 - INFO - Face comparison distance: 0.23818990859686318 (threshold: 0.4)
+2024-11-19 10:39:52,216 - INFO - Successful login for user: Ronaldo
